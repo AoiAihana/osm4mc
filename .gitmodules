@@ -1,0 +1,8 @@
+[submodule "openstreetmap-website"]
+	path = openstreetmap-website
+	url = https://github.com/AoiAihana/openstreetmap-website.git
+	branch = osm4mc
+[submodule "osm-carto4mc"]
+	path = osm-carto4mc
+	url = https://github.com/AoiAihana/carto4mc.git
+	branch = minecraft

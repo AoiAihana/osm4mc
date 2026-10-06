@@ -1,0 +1,166 @@
+注意，由于现实世界没有第二个维度，osm-website和iD编辑器对这个没有支持，因此这个项目没有对下界、末地和筛界等非主世界外的世界进行适配。虽然结构等内容会作为基础设施被添加，但是整体不受支持。这些维度绝大多数的键值对无法通过与现实类比得到，尤其是下界较为立体的结构无法通过osm表示。不要尝试绘制这些维度的地图。
+为保证兼容性，原本的海洋底图被移除，取而代之的是灰色表示虚空的区域。minecraft原版中的海洋面积普遍较小，请使用 place=sea 来表示。
+部分minecraft的结构可使用osm常用的的键表示，但为了便于检索推荐使用minecraft类的键。除非你是真的想要按照现实的样式来还原世界。
+为了便于维护，所有模组添加的内容禁止使用除了minecraft:addon外所有minecraft前缀的键（除非确实包括部分原版也存在的内容）。
+所有ID优先使用JAVA版最新版本，若没有才可使用服务器对应版本的ID。
+欢迎各位完善以下内容。
+
+
+计划要加的东西：
+
+杂项：
+	minecraft=yes			非标准的键，未使用其他minecraft键值对的时候用来表示其是否为minecraft相关的内容。有滥用的风险，慎用。不参与carto4mc的渲染。
+	minecraft:addon=*		其本身是用于标记对象所指的元素的mod来源（也可填入yes）。默认值为minecraft。其本身不参与carto4mc的渲染。扩展空间原则上冒号后接模组ID,再后面参考minecraft命名空间或者osm其他的键，但是保留词除外。保留词包括osm常用的键的名称。一般情况下服务器机制类的不需要加此标签（如服务器传送门）	
+		minecraft:addon=minecraft		在有必要表示原版物品是使用此值。
+
+	minecraft:block=*		表示必须标识的单个方块。只可使用点元素。数值为方块的ID。carto4mc渲染为棕色圆点，优先级相较其他标识较低。
+		minecraft:block=spawner			表示刷怪笼。可配合 produce=* 或 minecraft:product=* 。carto4mc渲染为不同的图标。
+
+	minecraft:species=*		用于minecraft的物种名称，涵盖生物和植被作物，避免污染 species=* 。值为实体ID。仅作为博物学使用，不用于农牧业生产设施。不参与carto4mc的渲染。部分高难度整合包推荐使用 species=* 标识游戏内标记的的拉丁学名。
+	minecraft:genus=*		用于minecraft的物种大类，涵盖生物和植被作物，避免污染 genus=* 。与 minecraft:species=* 不同的是，此键可笼统概括没有相同ID但是有共同属性的某类物种（如zombie表示所有建模、行为类似于僵尸的生物）。此标签对标现实分类中的属，与生物族群不同，后者的范围通常会比这个大。仅作为博物学使用，不用于农牧业生产设施。不参与carto4mc的渲染。
+
+	minecraft:landuse=*		表示minecraft特有的土地使用类型
+		minecraft:landuse=village		村民相关区域。不建议使用。
+		minecraft:landuse=redstone		红石电路区域。carto4mc渲染为与 landuse=industrial 相同。
+		minecraft:landuse=mob_switch		伪和平区域。carto4mc渲染为 landuse=brownfield 的底色加 landuse=military 的红斜线。
+		minecraft:landuse=empty			空置域。carto4mc渲染为底图颜色。
+		minecraft:landuse=command		命令方块和其他技术性区域。carto4mc渲染与 landuse=military 相同。
+
+
+自然类：
+
+	minecraft:nature=yes		表示是否为自然生成的、通过地图定制作为开档开服前生成的、被设定为自然生成的元素。不参与carto4mc的渲染。
+
+	minecraft:structure=*		表示对象为minecraft中的生成结构，但不包括部分过于小型的结构。数值仅限以下列出的内容。注意部分结构可能会有更合适的选择。可点可面。可在carto4mc渲染为对应的图标。标注是需注意osm编辑中卫星图必须可见的硬性规定，若结构遭拆除、改造则不应标注。
+		minecraft:structure=ancient_city	远古城市：面元素需要加 area=* 。
+		minecraft:structure=bastion_remnant	堡垒遗迹：面元素需要加 building=* 。
+		minecraft:structure=desert_pyramid	沙漠神殿：面元素需要加 building=* 。替代的键值对为 historic=temple + historic:civilization=ancient_egyptian
+		minecraft:structure=end_city		末地城：面元素需要加 building=* 。
+		minecraft:structure=fortress		下界要塞：面元素需要加 building=* 或 area=* 。
+		minecraft:structure=igloo		雪屋：面元素需要加 building=* 。可通过minecraft:structure:igloo:underground=yes表示包括地牢的雪屋。替代的键值对为amenity=shelter + shelter_type=basic_hut + building:structure=snow + building=yes + building:levels:underground=1（若有地下室）。注意虽然基岩版的ID为temple但不要加入任何关于temple的标签。
+		minecraft:structure=jungle_pyramid	丛林要塞：面元素需要加 building=* 。替代的键值对为 historic=temple + historic:civilization=mayan
+		minecraft:structure=mansion		林地府邸：面元素需要加 building=* 。替代的键值对为 building=apartment ，内部结构和房间可以参照osm
+		minecraft:structure=mineshaft		废弃矿井：面元素需要加 area=* 。替代的键值对为 historic=mine 或者 historic=mine_adit（适用于恶地的露天矿井）
+		minecraft:structure=monument		海底神殿：面元素需要加 area=* ，由于位于海底因此禁止使用 building=* 。可以考虑加入 historic=temple ，视情况可以在比海底神殿建筑范围稍大的范围标注 seamark:type=restricted_area 来限制船舶进入该区域。
+		minecraft:structure=ocean_ruin		海底废墟：面元素需要加 area=* 。替代的键值对为 ruins=yes
+		minecraft:structure=pillager_outpost 	掠夺者前哨站：面元素需要加 building=* （主体建筑）或 area=* （包含附属建筑的区域）。替代的键值对为 military=barracks
+		minecraft:structure=ruined_portal	废弃传送门：面元素需要加 area=* ，表示地面方块替换的区域而非门槛本身。不分维度。
+		minecraft:structure=shipwreck		沉船：面元素需要加 area=* 。替代标签为 historic=wreck ，推荐设置seamark:type=wreck 。
+		minecraft:structure=stronghold		要塞：面元素需要加 area=* 。
+		minecraft:structure=swamp_hut		沼泽小屋：面元素需要加 building=* 。
+		minecraft:structure=trail_ruins		古迹废墟：面元素需要加 area=* 。推荐使用 ruins=yes 。
+		minecraft:structure=trial_chambers	试炼密室：面元素需要加 area=* 。
+		minecraft:structure=village		村庄：面元素需要加 area=* 。在仿现实类、村庄改造类的场合不建议使用此标签，是否使用取决于是否将村民当作人。当此村庄已被玩家发展为聚落时不应使用此标签，请参考现实中的市镇使用标签。此标签仅限于村庄结构，仅技术层面的村庄（如掠夺塔、刷铁机、村民交易所等）不应使用。僵尸村庄、被玩家劫掠的村庄、袭击失败的村庄推荐使用 ruins=yes 。
+
+	minecraft:ore_vein=*		用于矿脉。不参与carto4mc的渲染。值限定为copper和iron
+
+
+基建类：
+
+	minecraft:amenity=*		用于各种设施。大多数设施（如岩浆垃圾桶）可以用类比方法。村庄建筑与村庄改造建筑请参照 amenity=*。均使用特定符号。需要注意这里均为公共设施，虽然可以用于标注私人设施但是不推荐。以下值均在carto4mc中渲染为不同的图标。
+		minecraft:amenity=ghast_parking		乐魂停车场
+		minecraft:amenity=nautilus_parking	鹦鹉螺港
+		minecraft:amenity=elytra		鞘翅起飞点
+		minecraft:amenity=villager_clinic	僵尸村民治疗站（俗称打折机）。与村民交易所深度整合的不应使用此标签。
+		minecraft:amenity=villager_love_hotel	村民繁殖站。与村民交易所深度整合的不应使用此标签。
+		minecraft:amenity=villager_exchange	村民交易所（注意是从村民交易货物，而非在玩家之间交易村民的场所）。视情况可加 building=yes 。
+		minecraft:amenity=enchanting		公共附魔台。注意藏有附魔书的地方应类比为图书馆类设施，根据规模选择对应的标签。
+		minecraft:amenity=ender_chest		公共末影箱
+		minecraft:amenity=chicken_bbq		通过自动收集鸡蛋、使用鸡蛋繁殖和成年后岩浆处死的小型公共食品设备（俗称烤鸡机）
+		minecraft:amenity=working_station	公共工作站，包括全套或大部分常用的单方块工作方块。有时工业模组的多个非自动化机械的组合也可被视作工作站。非公共的详见 craft=* 。
+		minecraft:amenity=afk_pool		挂机池
+
+	minecraft:portal=*		表示任何种类（包括模组、服务器插件等）的能让玩家瞬间移动到指定或某维度随机位置的门（及传送门）。必须保有交通用途，刷怪塔和将传送门封闭的刷沙机不可使用此标签。可使用 destination=* 表示目的地，使用 network=* 表示一对多的传送门网络。可用于点、线、面。
+		minecraft:portal=yes			不表示种类。
+		minecraft:portal=gate			指代垂直门框类（如下界传送门、远古城市传送门），通常从侧面进入。
+		minecraft:portal=podium			指代水平类（如末地传送门、返回传送门），通常从上方进入。
+		minecraft:portal=gateway		指代开放和接触式的传送门（如末地折跃门），通常有两个及以上非互成背对方向的接触面。
+		minecraft:portal=stone			指代右键交互后无需身体接触的传送门（如部分模组提供的传送石）。目的地若为具体的地点或者对应的传送门，
+		minecraft:portal:type=*			表示传送门类型。必须包含 minecraft:portal 。包括可在carto4mc渲染，以下每个值都有特别的图标，且优先级高于portal。限定为以下值：
+			minecraft:portal:type=nether			下界传送门
+			minecraft:portal:type=end			末地传送门和返回传送门
+			minecraft:portal:type=gateway			末地折跃门
+
+	minecraft:sport=*		表示minecraft中竞技设施类型。推荐搭配 leisure=* 表示体育场馆。专指现实中没有的内容。不参与carto4mc的渲染
+		minecraft:sport=pvp			适用于所有玩家之间活动的项目。
+		minecraft:sport=1v1duel			不限制武器，以击杀对方玩家为目的的二人制竞技项目。
+		minecraft:sport=brawl			限制职业，以击杀除自己外所有玩家为目的的多人制竞技项目。
+		minecraft:sport=spleef			通过挖掘对方脚下方块（通常为雪块）使其他人落下，同时避免自己落下的竞技项目（即掘一死战）。
+		minecraft:sport=speedrun		按照规定快速完成任务，以最快者为胜出的竞技项目。
+		minecraft:sport=pve			适用于所有玩家与电脑对抗的项目。
+
+
+生产类：
+
+	minecraft:industrial=*		表示所有借助大型机械或基础设施结构进行高效产出、加工物品的生产设施，涵盖所有自动化、半自动化或可假人化的设施。仅表示minecraft原版中出现的生产设施，科技类模组的工厂请使用osm的 landuse=industrial ，魔法类模组的生产设施请使用模组的命名空间。不同位置但是互相合作的生产设施应位于同一个关系内。carto4mc默认渲染为与 landuse=industrial 相同的样式，默认没有图案，以下值渲染的优先级更高（一般是继承 landuse=industrial 的颜色的基础上增加图标）。视情况可以加入 building=yes ，通常为套壳机器、工厂大棚或者足够紧密可被视作方块的暴露机械。主要注意小型机器、单方块机械等参照 minecraft:craft=* 和 craft=*
+
+		minecraft:industrial=furnace		表示大型熔炉组（规模约512及以上，或包括分类设备，或包括前端控制面板），包括熔炉的两个变种。一般情况下包含刷地毯机器。有时为刷石机的一部分，此时不应该标注。carto4mc渲染为独立的图案。
+		minecraft:industrial=cobblestone_generator	表示大型刷石机（自动化，有故障警告系统。通常）。包括圆石和玄武岩。carto4mc渲染为与 landuse=quarry 相同的图案，但只在中心显示一个。
+		minecraft:industrial=classification	大型公共物品分类机（俗称全物品）。本身不参与carto4mc的渲染，需要配合其他仓储类标签。
+		minecraft:industrial=tree_farm		全自动树厂，同时还包括大蘑菇机，但不包括竹子机。carto4mc渲染为森林的符号。
+		minecraft:industrial=farmland		农厂，包括人工式（必须为堆叠结构，平面农田、大棚用 landuse=farmland ）、村民式、机械全自动或模组类全自动，涵盖任何作物和园艺植物。carto4mc渲染为农田的符号，但优先度低于crop的符号。
+		minecraft:industrial=iron_golem_farm	刷铁机。carto4mc渲染为单独的符号。
+		minecraft:industrial=ice			刷冰机。carto4mc渲染为单独的符号。
+		minecraft:industrial=potion		大型多功能药水机，通常支持所有的药水类型。carto4mc渲染为单独的符号。
+		minecraft:industrial=agrarian		生产植物催熟剂的机械，包括原版的骨粉机，但不包括骷髅刷怪塔。carto4mc渲染为单独的符号。
+
+		minecraft:industrial=mob_farm		表示自动化或半自动化生成、处死生物并收集生物产出的资源的基建设施（包括刷怪塔、刷怪笼收集装置、自定试炼笼农场等设施）。特别的，若其生产模式符合现实中的屠宰场，可以考虑使用现实标签如 industrial=slaughterhouse + animal=* + product=* 。carto4mc在场地中心渲染为默认的刷怪塔图案。以下类型渲染的优先级更高。
+			minecraft:mob_farm=slaughterhouse		表示和平生物刷怪塔，但也包括疣猪塔。不包括类似畜圈的设计（如使用女仆自动养殖和屠宰）。carto4mc渲染为独立的图案。
+			minecraft:mob_farm=pigman			表示猪人刷怪塔，包括单维度刷怪塔、双维度刷怪塔的接收器等多种类型。carto4mc渲染为独立的图案。
+			minecraft:mob_farm=swamp			表示沼泽刷怪塔。carto4mc渲染为独立的图案。
+			minecraft:mob_farm=spawner			表示刷怪笼刷怪塔。carto4mc渲染与 minecraft:block=spawner 相同的图案。
+			minecraft:mob_farm=creaking			表示嘎吱刷怪塔。carto4mc渲染为独立的图案。
+			minecraft:mob_farm=shulker			表示潜影贝刷怪塔。carto4mc渲染为独立的图案。
+			minecraft:mob_farm=pillager_outpost		表示改造后的前哨站。不可与 minecraft:structure=pillager_outpost 共存。carto4mc渲染为与 minecraft:structure=pillager_outpost 相同的图案。
+			minecraft:mob_farm=raid				表示掠夺塔。carto4mc渲染为独立的图案。
+			minecraft:mob_farm=enderman			表示末影人刷怪塔。carto4mc渲染为独立的图案。
+			minecraft:mob_farm=guardian			表示远古守卫者刷怪塔。不可与 minecraft:structure=monument 共存。必要时请加入 seamark:type=marine_farm 。carto4mc渲染为独立的图案。
+			minecraft:mob_farm=gravity			表示刷沙机。carto4mc渲染为独立的图案。
+			minecraft:mob_farm=fish				表示鱼塔。carto4mc渲染为与 landuse=aquaculture 相同的图案。
+
+	minecraft:craft			表示借助手工或小型机械进行生产的场所。与osm的 craft=* 不同的是此标签可放入 minecraft:industrial 的范围中来表示特定的车间或特定的机械、工序。
+		minecraft:craft=crafter		自动化工作台合成设备。包括使用合成器的全自动合成流水线和旧版本常见的脚本合成辅助机械。
+		minecraft:craft=carpet			地毯机
+		minecraft:craft=railway			刷铁轨机
+		minecraft:craft=snow			刷雪机
+		minecraft:craft=destroy			方块破坏室，包括TNT式或凋零式。
+		minecraft:craft=slaughterhouse		处死装置
+		minecraft:craft=update_suppressor	更新抑制装置或更新跳略装置
+		minecraft:craft=packager		打包器
+		minecraft:craft=unpackager		拆包器或烧包器
+		minecraft:craft=panel			前端界面或控制面板
+		minecraft:craft=chunk_loader		区块加载器
+
+	minecraft:product		表示产出的类别。推荐直接使用osm的 product=*（二产） 、 resource=*（矿业） 、 produce=*（一产） 、 crops=*（专用于作物） 、 tree=*(专用于果树） 。如果表示具体的物品，值应为具体的物品ID（以最新版本为准）或者矿词
+	minecraft:conveyor		传送带的类型。不参与carto4mc的渲染。
+
+
+红石类：
+
+	minecraft:redstone=yes		表示红石机械。当数值为yes时不参与carto4mc渲染
+		minecraft:redstone=music		表示为红石音乐盒。carto4mc渲染为独立的图案。
+		minecraft:redstone=cannon		表示任何通过某种手段将某种实体加速后定向抛出的设施，涵盖TNT炮、珍珠炮、箭矢加速器等。carto4mc渲染与 historic=cannon 相同。
+		minecraft:redstone=timer		计时器
+		minecraft:redstone=memory		数据存储设备
+		minecraft:redstone=monitor		显示屏幕
+		minecraft:redstone=tnt_spawner		TNT生成装置，包括发射器和复制机。
+	
+	minecraft:signal_wired=yes	表示任何能传输数据的线。值为主要的方块材质ID。
+
+	minecraft:cannon=*		必须添加 minecraft:redstone=cannon 。carto4mc的渲染等级比 minecraft:redstone=cannon 高。
+		minecraft:cannon=tnt 			发射TNT的大炮，也包括通过加速铁轨掷出TNT矿车的装置。该装置特用于战争目的，不包括为生产和建筑使用的TNT生成装置。carto4mc渲染与 historic=cannon 相同。
+		minecraft:cannon=end_pearl 		由矢量计算机控制，通过控制TNT在各矢量角的向指定矢量方向加速玩家投出的末影珍珠的大炮。carto4mc渲染为独立的图案。
+		minecraft:cannon=arrow			通过生成大量tnt使实体箭加速从而制造大量伤害的设备。
+
+现实向的建议，不涉及carto4mc的渲染更改：
+	species=*			表示现实的物种。部分物种推荐使用 genus=* 。如果使用此来表示minecraft也存在此生物请参考以下映射表，但也欢迎使用乡土树种的学名。部分高难度整合包推荐使用游戏内标记的的拉丁学名。
+		species=fargesia_spathacea		竹->箭竹模式种
+		species=quercus_robur			橡树（原版，包括幸运橡树,尤其是有让果实为橡子的模组时）->夏栎
+		species=malus_domestica			橡树（某些模组添加果实方块时使用，不包括幸运橡树）->苹果
+		species=picea_abies			云杉（普通云杉）->欧洲云杉
+		species=pinus_armandii			云杉（普通松树）->华山松
+		species=pinus_armandii			云杉（大型云杉）->华山松
+
+
+	building=*
+		building=livestock			表示任何饲养生物而建的建筑物，包括繁殖和获取其中的资源。包括全自动化机械。使用 minecraft:species=* 或 animal=* 标记生物。

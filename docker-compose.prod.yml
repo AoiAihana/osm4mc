@@ -1,0 +1,27 @@
+# Production overrides for the combined stack.
+#
+# Apply on top of docker-compose.yml:
+#
+#   docker compose -p osm-prod --env-file .env.prod \
+#       -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# or simply:
+#
+#   ./tools/switch-env.sh prod
+#
+# Only `environment` (a mapping, merged key by key) is overridden here. Volumes,
+# data directories and ports are parameterised in the base file via .env.prod
+# instead, so this file never has to rely on Compose's list-merge semantics for
+# `volumes`. The startup command is the shared web/start.sh wrapper, which
+# exports locales, (re)precompiles assets when their inputs changed, and runs
+# db:prepare when RAILS_ENV is production.
+
+services:
+  web:
+    environment:
+      RAILS_ENV: production
+      # There is no config/credentials.yml.enc in this checkout, so in
+      # production Rails takes the secret from the environment and fails to boot
+      # without it. ./tools/switch-env.sh generates it into .env.prod.
+      SECRET_KEY_BASE: "${SECRET_KEY_BASE:?SECRET_KEY_BASE is empty - run ./tools/switch-env.sh prod --init}"
+      RAILS_LOG_LEVEL: "${RAILS_LOG_LEVEL:-info}"

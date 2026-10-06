@@ -1,0 +1,301 @@
+# Unified stack: openstreetmap-website (API + iD editor) + osm-carto4mc
+# (osm2pgsql render database + renderd/mod_tile tile server).
+#
+# Both projects share ONE PostgreSQL/PostGIS container and ONE data volume.
+# Inside that instance there are two logical databases:
+#
+#   openstreetmap  <- the rails port "apidb" schema; iD writes here
+#   gis            <- the osm2pgsql flex schema; osm-carto4mc reads here
+#
+# The `sync` service is what makes them "one database" in practice: it exports
+# the API db and feeds osm2pgsql incrementally, so every edit made in iD shows
+# up in the rendered tiles a few seconds later.
+#
+#   docker compose up -d
+#   -> 入口(edge) http://localhost:3000          <- 唯一需要对外暴露/穿透的端口
+#        /            Rails 站点、API、iD 编辑器
+#        /tile/...    http://localhost:8080/tile/{z}/{x}/{y}.png
+#        /tiles/...   http://localhost:8090/tiles/{z}/{x}/{y}.png  (dyn2xyz, 见下)
+#   -> web        http://localhost:3001          <- Rails 直连（调试用，页面里的瓦片是相对路径，走这里看不到图）
+#   -> tiles      http://localhost:8080/tile/{z}/{x}/{y}.png
+#   -> minecraft  http://localhost:8090/tiles/{z}/{x}/{y}.png   (dyn2xyz, 见下)
+#
+# 为什么要有 edge：瓦片是**浏览器**去下载的，而瓦片服务和网站在不同端口上。
+# 以前页面里写死 http://localhost:8080 之类的绝对地址，在别的设备（局域网或
+# 内网穿透）上 localhost 指向那台设备自己，于是瓦片全挂——不管穿透多少端口都
+# 没用。现在瓦片地址是根相对路径，浏览器向「它自己打开页面的那个 origin」要
+# 瓦片，所以本机 / 局域网 IP / 穿透域名三种访问方式共用同一份配置，
+# 而且只需要穿透 edge 这一个端口。详见 edge/default.conf 顶部注释。
+#
+# See README-COMBINED.md for details.
+
+name: osm
+
+x-db-conn: &db-conn
+  PGHOST: db
+  PGPORT: "5432"
+
+services:
+  # ---------------------------------------------------------------------
+  # Single PostgreSQL + PostGIS instance.
+  # Reuses the image built by openstreetmap-website/docker/postgres.
+  # ---------------------------------------------------------------------
+  db:
+    image: osm-db:latest
+    build:
+      context: ./openstreetmap-website
+      dockerfile: docker/postgres/Dockerfile
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: ${API_DB:-openstreetmap}
+    ports:
+      - "${DB_PORT:-54321}:5432"
+    volumes:
+      # Pinned to the volume created by the stock openstreetmap-website
+      # compose file, so an existing API database keeps working.
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # ---------------------------------------------------------------------
+  # Rails port: web site, API and the built-in iD editor.
+  # ---------------------------------------------------------------------
+  web:
+    image: osm-web:latest
+    build:
+      context: ./openstreetmap-website
+    environment:
+      PIDFILE: /tmp/pids/server.pid
+      RAILS_ENV: development
+    volumes:
+      - ./openstreetmap-website:/app
+      # Rebuilds the front-end bundles when config/layers.yml (which is inlined
+      # into them at compile time) changed - see the script for why that matters.
+      - ./web/start.sh:/usr/local/bin/osm-web-start.sh:ro
+      # Keep these inside the container so they are not shared with the host
+      - /app/node_modules/
+      - web-tmp:/app/tmp
+      - web-storage:/app/storage
+    tmpfs:
+      - /tmp/pids/
+    ports:
+      # 这是 Rails 的**直连**端口，默认让到 3001：3000 留给 edge 当前门
+      # （见下面的 edge 服务与 .env 里的 EDGE_PORT）。页面里的瓦片地址是
+      # 根相对路径，所以从 3001 直连时地图不会有图，那是预期行为。
+      - "${WEB_PORT:-3001}:3000"
+    stdin_open: true
+    tty: true
+    command: ["/usr/local/bin/osm-web-start.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------
+  # Sync service: API db  ->  OSM XML / osmChange  ->  osm2pgsql  ->  gis db
+  #
+  # Also performs the one-off bootstrap (full import, indexes, functions,
+  # external shapefiles, fonts) the first time it runs.
+  # ---------------------------------------------------------------------
+  sync:
+    image: osm-sync:latest
+    build: ./sync
+    environment:
+      <<: *db-conn
+      API_DB: ${API_DB:-openstreetmap}
+      API_USER: ${API_USER:-openstreetmap}
+      API_PASSWORD: ${API_PASSWORD:-openstreetmap}
+      GIS_DB: ${GIS_DB:-gis}
+      GIS_USER: ${GIS_USER:-postgres}
+      CARTODIR: /osm-carto4mc
+      STYLE: /osm-carto4mc/openstreetmap-carto-flex.lua
+      SYNC_INTERVAL: "${SYNC_INTERVAL:-60}"
+      BOOTSTRAP: "${BOOTSTRAP:-auto}"
+      LOAD_EXTERNAL_DATA: "${LOAD_EXTERNAL_DATA:-true}"
+      LOAD_FONTS: "${LOAD_FONTS:-true}"
+      KEEP_REPLICATION_FILES: "${KEEP_REPLICATION_FILES:-true}"
+      PURGE_TILES_ON_SYNC: "${PURGE_TILES_ON_SYNC:-true}"
+      OSM2PGSQL_CACHE: "${OSM2PGSQL_CACHE:-1024}"
+      OSM2PGSQL_NUMPROC: "${OSM2PGSQL_NUMPROC:-4}"
+      # get-fonts.py / get-external-data.py issue HTTP requests without a
+      # timeout; these bound each attempt and retry on a stalled connection.
+      FONT_DOWNLOAD_TIMEOUT: "${FONT_DOWNLOAD_TIMEOUT:-1800}"
+      EXTERNAL_DATA_TIMEOUT: "${EXTERNAL_DATA_TIMEOUT:-7200}"
+      DOWNLOAD_ATTEMPTS: "${DOWNLOAD_ATTEMPTS:-3}"
+      DOWNLOAD_REQUEST_TIMEOUT: "${DOWNLOAD_REQUEST_TIMEOUT:-60}"
+      DOWNLOAD_REQUEST_RETRIES: "${DOWNLOAD_REQUEST_RETRIES:-5}"
+      # Skip re-downloading the ~100 MB Noto font set when the (shared) font
+      # directory already holds it.
+      FONTS_MIN_FILES: "${FONTS_MIN_FILES:-40}"
+      FORCE_FONTS: "${FORCE_FONTS:-false}"
+      FONTDIR: /fonts
+    volumes:
+      # The carto style is used read-only; all generated artefacts go to DATA_DIR
+      # (parameterised so production keeps its own state, see .env.prod).
+      - ./osm-carto4mc:/osm-carto4mc:ro
+      - ${DATA_DIR:-./data}/carto:/osm-carto4mc/data
+      # Fonts are shared between environments on purpose: they are identical and
+      # cost ~100 MB to re-download.
+      - ${FONTS_DIR:-./data/fonts}:/fonts
+      - ${DATA_DIR:-./data}/sync:/state
+      - ${DATA_DIR:-./data}/replication:/replication
+      # mounted so the sync service can expire the mod_tile cache
+      - ${DATA_DIR:-./data}/tiles:/tiles
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------
+  # Tile server: renderd + mod_tile (Apache) rendering the carto style
+  # straight out of the `gis` database.
+  # ---------------------------------------------------------------------
+  tileserver:
+    image: osm-tileserver:latest
+    build: ./tileserver
+    environment:
+      <<: *db-conn
+      PGUSER: ${GIS_USER:-postgres}
+      PGDATABASE: ${GIS_DB:-gis}
+      CARTODIR: /osm-carto4mc
+      MAPNIK_XML: /data/mapnik.xml
+      # The container always listens on 8080; only the HOST port is tunable
+      # (see TILE_PORT / the ports mapping below).
+      RENDERD_THREADS: "4"
+      # renderd loads the Mapnik style once, at startup; wait for the sync
+      # service to finish bootstrapping before doing so.
+      RENDER_WAIT_TIMEOUT: "${RENDER_WAIT_TIMEOUT:-1800}"
+    volumes:
+      - ./osm-carto4mc:/osm-carto4mc:ro
+      - ${DATA_DIR:-./data}/carto:/data
+      # renderd.conf has font_dir=/usr/share/fonts with recursion enabled, so
+      # the Noto fonts downloaded by the sync service are picked up from here
+      # together with the distribution's own fallback fonts.
+      - ${FONTS_DIR:-./data/fonts}:/usr/share/fonts/truetype/osm-carto:ro
+      - ${DATA_DIR:-./data}/tiles:/var/lib/mod_tile
+    ports:
+      - "${TILE_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------
+  # dyn2xyz: Dynmap -> XYZ 瓦片转译代理。
+  #
+  # 把上游 Dynmap（dynamic map）的瓦片**实时**转译成标准 XYZ 瓦片，
+  # 让 QGIS / MapLibre 之类的 GIS 工具能像导入普通底图一样导入 Minecraft 地图：
+  #
+  #   -> 瓦片    http://localhost:8090/tiles/{z}/{x}/{y}.png
+  #   -> 元数据  http://localhost:8090/tilejson.json
+  #   -> 预览页  http://localhost:8090/
+  #
+  # 它是**无状态**的：不落盘、不预渲染，每个请求现算现抓现合成，
+  # 峰值内存约 0.6 MB/请求（详见 dyn2xyz/README.md）。
+  #
+  # 因此它不依赖 db / gis 数据库，也不参与 tileserver 的 mod_tile 缓存，
+  # 只需要能出网访问上游地图站。与其它服务同属 `name: osm` 这一个 compose
+  # 项目，所以 `docker compose up/down` 天然同步启停。
+  #
+  # 换地图来源 / 缩放范围请编辑 dyn2xyz/config/dyn2xyz.toml
+  # （只读挂载，改完 `docker compose restart dyn2xyz` 即可，无需重建镜像）。
+  # ---------------------------------------------------------------------
+  dyn2xyz:
+    image: dyn2xyz:latest
+    build:
+      context: ./dyn2xyz
+      # 网络不稳时用就近的 PyPI 镜像源构建，见 .env 里的 PIP_INDEX_URL
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    environment:
+      # 容器内固定监听 8080；只有 HOST 端口可调（见下面的 ports 与 DYN2XYZ_PORT）。
+      # 这里显式钉死，免得 .env 里的 DYN2XYZ_PORT 被误当作容器内端口。
+      DYN2XYZ_PORT: "8080"
+      DYN2XYZ_CONFIG: /config/dyn2xyz.toml
+      DYN2XYZ_LOG_LEVEL: "${DYN2XYZ_LOG_LEVEL:-INFO}"
+    volumes:
+      # 配置只读挂载，便于不重建镜像就换地图来源
+      - ${DYN2XYZ_CONFIG_DIR:-./dyn2xyz/config}:/config:ro
+    ports:
+      - "${DYN2XYZ_PORT:-8090}:8080"
+    # 它依赖第三方上游，抖动导致的异常退出应当自愈，而不是一直躺在那里。
+    # （启动期依赖上游的问题已由 config/dyn2xyz.toml 里预置的兜底几何参数解决，
+    #  这条是运行期的第二层保险。）
+    restart: unless-stopped
+    # 单独挂到一个 MTU 更小的网络上，原因见文件末尾 dyn2xyz-net 的注释。
+    # 它不需要访问 db / gis，所以不必待在默认网络里。
+    networks:
+      - dyn2xyz-net
+
+  # ---------------------------------------------------------------------
+  # edge：整个栈的唯一入口（反向代理）。
+  #
+  # 把三条链路收敛到一个端口上，浏览器只需要认识「它打开页面的那个 origin」：
+  #
+  #   /            -> web:3000        站点 / API / iD 编辑器
+  #   /tile/       -> tileserver:8080 renderd + mod_tile 出的 osm-carto4mc 瓦片
+  #   /tiles/      -> dyn2xyz:8080    Minecraft（Dynmap）XYZ 瓦片，
+  #   还有 /tilejson.json / /tiles.json / /status.json / /healthz
+  #
+  # 这样内网穿透只需要映射 EDGE_PORT（默认 3000）一个端口，而且不管穿透出来的
+  # 域名/IP 是什么都不用改任何配置——config/layers.yml 与 config/id_imagery.yml
+  # 里的瓦片地址现在是根相对路径。原因见 edge/default.conf 顶部的长注释。
+  #
+  # 它必须同时挂在 default（才能到 web / tileserver）和 dyn2xyz-net（才能到
+  # dyn2xyz，那张网是为了绕开 Docker NAT 的 PMTU 黑洞才单独建的，见文件末尾）。
+  # ---------------------------------------------------------------------
+  edge:
+    image: nginx:alpine
+    volumes:
+      - ./edge/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./edge/proxy-headers.conf:/etc/nginx/edge/proxy-headers.conf:ro
+    ports:
+      - "${EDGE_PORT:-3000}:8080"
+    networks:
+      - default
+      - dyn2xyz-net
+    depends_on:
+      - web
+      - tileserver
+      - dyn2xyz
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/edge-healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  # dyn2xyz 专用网络，MTU 调小到 1400。
+  #
+  # 起因：本机到上游地图站（map.bilicraft.com）的 TLS 握手在 Docker 的 bridge
+  # 网络里会间歇性失败（`SSL: UNEXPECTED_EOF_WHILE_READING`），实测同一时刻
+  # 宿主机 10/10 成功、容器内只有 2/10 —— 因为 PMTU 发现依赖的 ICMP
+  # "fragmentation needed" 过不了 Docker 的 NAT，1500 字节的握手包被黑洞掉。
+  # 把 MTU 降到 1400 后容器内稳定 10/10。
+  #
+  # 只给 dyn2xyz 建这个网络，是为了不去动 db / web / sync / tileserver 已经在用的
+  # 默认网络（换网络会连带重建那些容器）。如果以后别的服务也出现同类 TLS 抖动，
+  # 同样的 driver_opts 可以加到 default 网络上。
+  dyn2xyz-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1400"
+
+volumes:
+  # Pinned to the names created by the stock openstreetmap-website compose file
+  # so an existing API database (users, OAuth applications, map data) keeps
+  # working. They are NOT marked external on purpose: that way compose can still
+  # create them from scratch, at the cost of a harmless "volume already exists
+  # but was created for project openstreetmap-website" warning on this machine.
+  #
+  # The names are parameterised so that a second environment (see
+  # docker-compose.prod.yml / .env.prod) gets completely separate storage:
+  #   DB_VOLUME / WEB_TMP_VOLUME / WEB_STORAGE_VOLUME
+  db-data:
+    name: ${DB_VOLUME:-openstreetmap-website_db-data}
+  web-tmp:
+    name: ${WEB_TMP_VOLUME:-openstreetmap-website_web-tmp}
+  web-storage:
+    name: ${WEB_STORAGE_VOLUME:-openstreetmap-website_web-storage}

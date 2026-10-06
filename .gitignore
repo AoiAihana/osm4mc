@@ -1,0 +1,63 @@
+# =============================================================================
+# osm4mc —— 发布前请先跑 ./tools/check-before-publish.sh
+#
+# 这份 .gitignore 的每一条都对应一个「发出去就麻烦」的东西：机密、生成物、
+# 第三方克隆、或权利未确认的素材。改动时请连同该脚本一起改。
+# =============================================================================
+
+# --- 整体不发布的子项目 ----------------------------------------------------
+# 按权利人的决定，这两个目录是本地工程/研究资料，不随本仓库发布。
+# coastline/ 里还有 OAuth 令牌（.token），一并被挡掉。
+coastline/
+mcmap/
+
+# --- 机密（绝对不能提交）---------------------------------------------------
+# 守卫在 web 容器内写下的长期 API 令牌（上游 .gitignore 的 tmp 也会覆盖一次）
+openstreetmap-website/tmp/
+# 生产机密与管理员口令（.env.prod.example 是模板，要跟踪）
+.env.prod
+.prod-admin-password
+
+# --- 运行时数据（体积大 / 含 ODbL 数据 / 之后可能单独建仓库）--------------
+# 字体、shapefile、瓦片、复制件、渲染数据……全部是 bootstrap 时生成或下载的
+data/
+# backup/ 下**除了配置本身全部不入库**：
+#   *.dump 是 gis / API 库的完整副本（含 ODbL 数据，单文件可达 GB 级）
+#   copy-*/ 是 tools/copy-env-data.sh 在环境之间复制数据库时留下的目录
+backup/*
+!backup/backup.conf
+
+# --- 生成物与中间产物 ------------------------------------------------------
+*.log
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
+
+# 三个导入器的产物：含第三方来源数据，权利未确认（见 COPYRIGHT.md §4.3 / §6.1）
+natural-import/out/
+railway-import/out/
+sfrt-import/out/
+# 导入器会把「上传令牌」和「L0 瓦片缓存」软链到 .work/ 下（见 railway-import/README.md）。
+# 这类软链本身不含机密（git 只记录目标路径字符串），但指向的是本机 .work/，
+# 别人克隆后就是死链 —— 不入库，让使用者按 README 自行创建。
+**/token.txt
+**/l0cache
+# 本项目的 QA 截图与哈希对比中间产物
+.qa-verifier/
+
+# --- 本地虚拟环境与工具输出 ------------------------------------------------
+dyn2xyz/.venv/
+dyn2xyz/compare.png
+dyn2xyz/.scratch/
+.venv/
+venv/
+node_modules/
+
+# --- 其它本地状态 ----------------------------------------------------------
+.docker/
+.npmcache/
+.work/
+*.orig
+*.rej

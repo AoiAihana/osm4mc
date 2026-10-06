@@ -1,0 +1,36 @@
+# 统一换行；本项目只在 Linux 上跑
+* text=auto eol=lf
+
+# 二进制（别让 git 试图 diff / 合并）
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.npy   binary
+*.npz   binary
+*.dump  binary
+*.tar   binary
+*.gz    binary
+*.zip   binary
+*.woff  binary
+*.woff2 binary
+*.otf   binary
+*.ttf   binary
+# SVG 是文本，参与 diff 更利于审阅
+*.svg text
+
+# -----------------------------------------------------------------------------
+# GitHub 语言统计
+#
+# 不加这几条的话，仓库的语言构成会被上游的 Ruby / JavaScript 淹没，
+# 看不出本项目自己写了什么。
+# -----------------------------------------------------------------------------
+openstreetmap-website/**  linguist-vendored
+osm-carto4mc/**           linguist-vendored
+mcmap/data/**             linguist-vendored
+mcmap/sources/**          linguist-vendored
+coastline/ref/**          linguist-vendored
+
+# 文档不计入语言统计
+*.md linguist-documentation
